@@ -1,0 +1,148 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluent-bit-config
+  namespace: logging
+data:
+  fluent-bit.conf: |
+    [SERVICE]
+        Flush               1
+        Grace               5
+        Daemon              Off
+        Log_Level           info
+        Parsers_File        /fluent-bit/etc/parsers.conf
+
+    [INPUT]
+        Name                tail
+        Path                /var/log/containers/*unicorn*.log
+        Parser              cri
+        Tag                 kube.*
+        Refresh_Interval    5
+        Mem_Buf_Limit       50M
+        Skip_Long_Lines     On
+
+    [FILTER]
+        Name                grep
+        Match               kube.*
+        Exclude             log .*path=/health.*
+
+    [FILTER]
+        Name                parser
+        Match               kube.*
+        Key_Name            log
+        Parser              access_log
+        Reserve_Data        On
+        Preserve_Key        Off
+
+    [FILTER]
+        Name                grep
+        Match               kube.*
+        Regex               method .+
+
+    [FILTER]
+        Name                lua
+        Match               kube.*
+        script              /fluent-bit/etc/metric.lua
+        call                convert_duration
+
+    [FILTER]
+        Name                log_to_metrics
+        Match               kube.*
+        Tag                 prometheus_metrics
+        Metric_Mode         histogram
+        Metric_Name         http_request_duration_seconds
+        Metric_Description  HTTP request duration in seconds
+        Value_Field         duration
+        Bucket              0.1
+        Bucket              0.2
+        Bucket              0.3
+        Bucket              0.4
+        Bucket              0.5
+        Bucket              1
+        Bucket              2
+        Bucket              3
+        Bucket              4
+        Bucket              5
+        Bucket              10
+        Bucket              15
+        Bucket              20
+        Bucket              30
+        Bucket              40
+        Bucket              50
+        Add_Label           method $method
+        Add_Label           path $path
+        Add_Label           status_code $status_code
+
+    [FILTER]
+        Name                lua
+        Match               kube.*
+        script              /fluent-bit/etc/format.lua
+        call                format_cloudwatch
+
+    [OUTPUT]
+        Name                cloudwatch_logs
+        Match               kube.*
+        Region              ap-northeast-2
+        Log_Group_Name      /unicorn/eks/book-app
+        Log_Stream_Name     /unicorn/eks/book-app/stream
+        Auto_Create_Group   true
+        Log_Key             cw_log
+
+    [OUTPUT]
+        Name                prometheus_exporter
+        Match               prometheus_metrics
+        Host                0.0.0.0
+        Port                2021
+
+  parsers.conf: |
+    [PARSER]
+        Name                cri
+        Format              regex
+        Regex               ^(?<time>[^ ]+) (?<stream>stdout|stderr) (?<logtag>[^ ]*) (?<log>.*)$
+        Time_Key            time
+        Time_Format         %Y-%m-%dT%H:%M:%S.%L%z
+        Time_Keep           On
+
+    [PARSER]
+        Name                access_log
+        Format              regex
+        Regex               ^(?<timestamp>\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2}) access method=(?<method>[^ ]+) path=(?<path>[^ ]+) status=(?<status_code>\d+)\s*duration=(?<duration_ms>[0-9.]+)ms remote_addr=(?<client_ip>[^ :]+):(?<port>[0-9]+) user_agent="(?<user_agent>[^"]*)".*$
+        Types               status_code:integer duration_ms:float port:integer
+
+  metric.lua: |
+    function convert_duration(tag, timestamp, record)
+        if record["duration_ms"] ~= nil then
+            local ms = tonumber(record["duration_ms"])
+            if ms ~= nil then
+                record["duration"] = ms / 1000
+            end
+        end
+
+        return 1, timestamp, record
+    end
+
+  format.lua: |
+    function format_cloudwatch(tag, timestamp, record)
+        local formatted_timestamp = record["timestamp"]
+
+        if formatted_timestamp ~= nil then
+            formatted_timestamp = string.gsub(
+                formatted_timestamp,
+                "(%d+)/(%d+)/(%d+) (%d+):(%d+):(%d+)",
+                "%1-%2-%3T%4:%5:%6Z"
+            )
+        end
+
+        local json =
+            '{"timestamp":"' .. tostring(formatted_timestamp) ..
+            '","method":"' .. tostring(record["method"]) ..
+            '","path":"' .. tostring(record["path"]) ..
+            '","status_code":' .. tostring(record["status_code"]) ..
+            ',"client_ip":"' .. tostring(record["client_ip"]) ..
+            '"}'
+
+        local new_record = {}
+        new_record["cw_log"] = json
+
+        return 1, timestamp, new_record
+    end
