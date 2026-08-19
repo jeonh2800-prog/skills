@@ -14,7 +14,7 @@ module "ec2" {
 module "sqs" {
   source = "./module/sqs"
 
-  name                        = "skm-order-queue"
+  name                        = "my-application-queue"
   fifo_queue                  = false 
   delay_seconds               = 0
   max_message_size            = 262144  
