@@ -1,5 +1,0 @@
-#!/bin/bash
-# ${project}-event-ec2 bootstrap
-dnf -y update
-systemctl enable --now amazon-ssm-agent
-echo "${project}-event-ec2 ready" > /var/tmp/bootstrap.log
