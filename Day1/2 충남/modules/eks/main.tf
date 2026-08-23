@@ -32,7 +32,6 @@ resource "null_resource" "bootstrap" {
         grafana_admin_password = var.grafana_admin_password
         grafana_node_port      = var.grafana_node_port
       }),
-      filesha256("${path.module}/manifest/grafana/configmap.yaml"),
       filesha256("${path.module}/manifest/prometheus/values.yaml"),
       filesha256("${path.module}/manifest/fluent-bit/values.yaml"),
     ]))
@@ -56,11 +55,6 @@ resource "null_resource" "bootstrap" {
   provisioner "file" {
     source      = "${path.module}/book/"
     destination = "/home/ec2-user/eks/book"
-  }
-
-  provisioner "file" {
-    source      = "${path.module}/manifest/grafana/configmap.yaml"
-    destination = "/home/ec2-user/eks/manifest/grafana/configmap.yaml"
   }
 
   provisioner "file" {

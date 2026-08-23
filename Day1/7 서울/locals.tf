@@ -1,5 +1,5 @@
 locals {
-  player_number = "105"
+  player_number = var.player_number
 
   parameter = "unicorn"
 
