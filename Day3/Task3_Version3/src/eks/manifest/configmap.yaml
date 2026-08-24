@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: apdev-rds-config
+  namespace: apdev
+data:
+  MYSQL_USER: "DB_USER"
+  MYSQL_HOST: "DB_HOST"
+  MYSQL_PORT: "DB_PORT"
+  MYSQL_DBNAME: "DB_NAME"
